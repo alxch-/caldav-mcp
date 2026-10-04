@@ -64,7 +64,15 @@ Set the following environment variables:
 export CALDAV_URL="https://caldav.example.com/"
 export CALDAV_USERNAME="your-username"
 export CALDAV_PASSWORD="your-password"
+export CALDAV_ORGANIZER_EMAIL="organizer@example.com"
 ```
+
+`CALDAV_ORGANIZER_EMAIL` is the scheduling identity written as `ORGANIZER`
+when an event has attendees. It is required for attendee events when the
+CalDAV username is not itself an email address. A successful create confirms
+that the event was stored and scheduling was attempted; it does not prove mail
+delivery. The result therefore reports `invitation_delivery_confirmed: null`
+until a recipient mailbox verifies delivery independently.
 
 ### CalDAV Server URLs
 

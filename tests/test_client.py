@@ -219,6 +219,57 @@ def test_caldav_client_create_event_with_attendees(mock_dav_client):
     assert "attendee2@example.com" in saved_event
 
 
+@patch("mcp_caldav.client.caldav.DAVClient")
+def test_create_event_with_attendees_includes_configured_organizer(mock_dav_client):
+    mock_client_instance = MagicMock()
+    mock_principal = MagicMock()
+    mock_calendar = MagicMock()
+    mock_calendar.name = "Test Calendar"
+    mock_principal.calendars.return_value = [mock_calendar]
+    mock_client_instance.principal.return_value = mock_principal
+    mock_dav_client.return_value = mock_client_instance
+    client = CalDAVClient(
+        url="https://caldav.example.com/",
+        username="alex",
+        password="test-password",
+        organizer_email="alex@example.com",
+    )
+    client.connect()
+
+    result = client.create_event(
+        title="Invitation",
+        start_time=datetime(2026, 10, 4, 15, 0),
+        attendees=[{"email": "guest@example.com", "status": "NEEDS-ACTION"}],
+    )
+
+    saved_event = mock_calendar.save_event.call_args.args[0]
+    assert "ORGANIZER;CN=alex@example.com:mailto:alex@example.com" in saved_event
+    assert "ATTENDEE;RSVP=TRUE;CN=guest@example.com;PARTSTAT=NEEDS-ACTION" in saved_event
+    assert result["event_created"] is True
+    assert result["scheduling_attempted"] is True
+    assert result["invitation_delivery_confirmed"] is None
+
+
+@patch("mcp_caldav.client.caldav.DAVClient")
+def test_create_event_rejects_attendees_without_organizer(mock_dav_client):
+    mock_client_instance = MagicMock()
+    mock_principal = MagicMock()
+    mock_calendar = MagicMock()
+    mock_calendar.name = "Test Calendar"
+    mock_principal.calendars.return_value = [mock_calendar]
+    mock_client_instance.principal.return_value = mock_principal
+    mock_dav_client.return_value = mock_client_instance
+    client = CalDAVClient(
+        url="https://caldav.example.com/", username="alex", password="test-password"
+    )
+    client.connect()
+
+    with pytest.raises(RuntimeError, match="organizer email is required"):
+        client.create_event(title="Invalid invitation", attendees=["guest@example.com"])
+
+    mock_calendar.save_event.assert_not_called()
+
+
 # Helper function tests
 
 

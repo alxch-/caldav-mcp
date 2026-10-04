@@ -67,12 +67,14 @@ def test_get_caldav_config():
             "CALDAV_URL": "https://test.example.com/",
             "CALDAV_USERNAME": "test@example.com",
             "CALDAV_PASSWORD": "test-password",
+            "CALDAV_ORGANIZER_EMAIL": "organizer@example.com",
         },
     ):
         config = get_caldav_config()
         assert config["url"] == "https://test.example.com/"
         assert config["username"] == "test@example.com"
         assert config["password"] == "test-password"
+        assert config["organizer_email"] == "organizer@example.com"
 
 
 def test_get_caldav_config_yandex_env():
@@ -192,6 +194,24 @@ async def test_call_tool_create_event_with_datetime(app_context):
         assert call_kwargs["title"] == "Test Event"
         assert call_kwargs["start_time"] is not None
         assert call_kwargs["end_time"] is not None
+
+
+@pytest.mark.anyio
+async def test_call_tool_create_event_passes_explicit_organizer(app_context):
+    from .conftest import mock_request_context
+
+    with mock_request_context(app_context):
+        await call_tool(
+            "caldav_create_event",
+            {
+                "title": "Invitation",
+                "attendees": ["guest@example.com"],
+                "organizer": "organizer@example.com",
+            },
+        )
+
+    call_kwargs = app_context.client.create_event.call_args.kwargs
+    assert call_kwargs["organizer"] == "organizer@example.com"
 
 
 @pytest.mark.anyio
