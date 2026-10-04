@@ -42,6 +42,9 @@ class EventRecord(TypedDict, total=False):
 
 class EventCreationResult(TypedDict):
     success: bool
+    event_created: bool
+    scheduling_attempted: bool
+    invitation_delivery_confirmed: bool | None
     uid: str
     title: str
     start_time: str
@@ -56,6 +59,7 @@ class EventDeletionResult(TypedDict):
 
 
 AttendeeInput = EventAttendee | str
+OrganizerInput = EventAttendee | str
 
 
 def _escape_ical_text(value: str | Any) -> str:
@@ -190,6 +194,19 @@ def _format_attendees(attendees: list[AttendeeInput]) -> str:
     return "\n".join(attendee_lines) + "\n" if attendee_lines else ""
 
 
+def _format_organizer(organizer: OrganizerInput) -> str:
+    """Format and validate an iCalendar ORGANIZER property."""
+    if isinstance(organizer, str):
+        email = organizer.strip()
+        display_name = email
+    else:
+        email = organizer.get("email", "").strip()
+        display_name = organizer.get("name", email).strip()
+    if "@" not in email:
+        raise ValueError("organizer email is required when attendees are present")
+    return f"ORGANIZER;CN={_escape_ical_text(display_name)}:mailto:{email}\n"
+
+
 def _parse_categories(cats: Any) -> list[str]:
     """
     Parse categories from iCalendar component.
@@ -295,6 +312,7 @@ class CalDAVClient:
         url: str,
         username: str,
         password: str,
+        organizer_email: str | None = None,
     ):
         """
         Initialize CalDAV client.
@@ -307,6 +325,7 @@ class CalDAVClient:
         self.url = url
         self.username = username
         self.password = password
+        self.organizer_email = organizer_email
         self.client: Any | None = None
         self.principal: Any | None = None
         # Detect Yandex Calendar for special handling
@@ -350,6 +369,7 @@ class CalDAVClient:
         duration_hours: float = 1.0,
         reminders: list[dict] | None = None,
         attendees: list[AttendeeInput] | None = None,
+        organizer: OrganizerInput | None = None,
         categories: list[str] | None = None,
         priority: int | None = None,
         recurrence: dict | None = None,
@@ -371,6 +391,8 @@ class CalDAVClient:
                 - description: reminder text (optional)
             attendees: List of email addresses (str) or dicts with 'email' and 'status'
                 Status can be: 'ACCEPTED', 'DECLINED', 'TENTATIVE', 'NEEDS-ACTION'
+            organizer: Organizer email or object with email and optional name. Required
+                with attendees unless configured on the client.
             categories: List of category strings
             priority: Priority 0-9 (0 = highest, 9 = lowest)
             recurrence: Dictionary with recurrence rules:
@@ -452,6 +474,16 @@ END:VALARM
 
             # Format attendee components
             attendee_components = _format_attendees(attendees) if attendees else ""
+            organizer_components = ""
+            if attendees:
+                organizer_value = organizer or self.organizer_email
+                if not organizer_value and "@" in self.username:
+                    organizer_value = self.username
+                if not organizer_value:
+                    raise ValueError(
+                        "organizer email is required when attendees are present"
+                    )
+                organizer_components = _format_organizer(organizer_value)
 
             # Format categories
             categories_line = _format_categories(categories) if categories else ""
@@ -479,7 +511,7 @@ DESCRIPTION:{description_escaped}
 LOCATION:{location_escaped}
 STATUS:CONFIRMED
 SEQUENCE:0
-{priority_line}{categories_line}{rrule_line}{attendee_components}{alarm_components}END:VEVENT
+{priority_line}{categories_line}{rrule_line}{organizer_components}{attendee_components}{alarm_components}END:VEVENT
 END:VCALENDAR"""
 
             # Save event
@@ -487,6 +519,9 @@ END:VCALENDAR"""
 
             return {
                 "success": True,
+                "event_created": True,
+                "scheduling_attempted": bool(attendees),
+                "invitation_delivery_confirmed": None,
                 "uid": uid,
                 "title": title,
                 "start_time": start_time.isoformat(),

@@ -33,6 +33,7 @@ def get_caldav_config() -> dict[str, str | None]:
         or os.getenv("YANDEX_USERNAME"),  # Backward compatibility
         "password": os.getenv("CALDAV_PASSWORD")
         or os.getenv("YANDEX_PASSWORD"),  # Backward compatibility
+        "organizer_email": os.getenv("CALDAV_ORGANIZER_EMAIL"),
     }
 
 
@@ -48,6 +49,7 @@ async def server_lifespan(server: Server) -> AsyncIterator[AppContext]:  # noqa:
                 url=config["url"],
                 username=config["username"],
                 password=config["password"],
+                organizer_email=config.get("organizer_email"),
             )
             client.connect()
             logger.info(
@@ -176,6 +178,20 @@ async def list_tools() -> list[Tool]:
                                 },
                             ]
                         },
+                    },
+                    "organizer": {
+                        "description": "Organizer email address (string) or object with 'email' and optional 'name'. Defaults to CALDAV_ORGANIZER_EMAIL.",
+                        "oneOf": [
+                            {"type": "string"},
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "email": {"type": "string"},
+                                    "name": {"type": "string"},
+                                },
+                                "required": ["email"],
+                            },
+                        ],
                     },
                     "categories": {
                         "type": "array",
@@ -419,6 +435,7 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             duration_hours = arguments.get("duration_hours", 1.0)
             reminders = arguments.get("reminders")
             attendees = arguments.get("attendees")
+            organizer = arguments.get("organizer")
             categories = arguments.get("categories")
             priority = arguments.get("priority")
             recurrence = arguments.get("recurrence")
@@ -457,6 +474,7 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
                 duration_hours=duration_hours,
                 reminders=reminders,
                 attendees=attendees,
+                organizer=organizer,
                 categories=categories,
                 priority=priority,
                 recurrence=recurrence,
